@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>KONGO CAVE</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 12px;
+    font-family: -apple-system, system-ui, sans-serif;
+    background: #0a0f14; color: #e6e0d4;
+    min-height: 100vh; padding-top: max(12px, env(safe-area-inset-top));
+    font-size: 15px;
+  }
+  h1 {
+    font-size: 18px; margin: 0 0 12px;
+    letter-spacing: 3px; text-transform: uppercase;
+    color: #d4a44a; text-align: center;
+    border-bottom: 1px solid #2a2015; padding-bottom: 10px;
+  }
+  .card {
+    background: #131a20; border: 1px solid #1f2a33;
+    border-radius: 12px; padding: 12px; margin-bottom: 10px;
+  }
+  .clockblock { text-align: center; }
+  #clock { font-size: 46px; font-weight: 300; color: #d4a44a; letter-spacing: 2px; line-height: 1; }
+  #date { color: #9aacb8; margin-top: 4px; font-size: 14px; }
+  #phase { color: #6b8a5a; margin-top: 6px; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
+  #weather { color: #7a9bb0; margin-top: 4px; font-size: 12px; }
+  .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1a2129; font-size: 14px; }
+  .row:last-child { border: none; }
+  .dim { color: #7a8a96; font-size: 12px; }
+  h2 { font-size: 11px; color: #6b8a5a; text-transform: uppercase; letter-spacing: 2px; margin: 0 0 8px; }
+  .controls { display: flex; gap: 6px; flex-wrap: wrap; }
+  button {
+    background: #1f2a33; color: #e6e0d4; border: 1px solid #2f3f4f;
+    border-radius: 8px; padding: 10px 12px; font-size: 13px;
+    font-family: inherit; cursor: pointer; flex: 1; min-width: 44px;
+  }
+  button:active { background: #2a3a47; }
+  button.active { background: #d4a44a; color: #0a0f14; border-color: #d4a44a; font-weight: 600; }
+  #speedBtns { display: flex; gap: 6px; margin-top: 6px; }
+  #money { color: #d4a44a; font-weight: 600; }
+  .event { font-size: 12px; color: #9aacb8; padding: 4px 0; border-bottom: 1px dashed #1a2129; }
+  .event:first-child { color: #e6e0d4; }
+  .bar { height: 6px; background: #1a2129; border-radius: 3px; overflow: hidden; margin: 6px 0; }
+  .bar > div { height: 100%; background: #d4a44a; transition: width .3s; }
+  #expedition { display: none; }
+  .exp { font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>⛏️ Kongo Cave</h1>
+
+<div class="card clockblock">
+  <div id="clock">06h00</div>
+  <div id="date">Lundi 1 Janvier, An 1</div>
+  <div id="phase">matin</div>
+  <div id="weather">☀️ soleil · 26°C</div>
+</div>
+
+<div class="card">
+  <div class="controls">
+    <button id="btnPause">⏸️ Pause</button>
+    <button id="btnSleep">😴 Dormir</button>
+    <button id="btnExpedition">⛏️ Expédition</button>
+  </div>
+  <div id="speedBtns">
+    <button data-speed="1" class="active">1×</button>
+    <button data-speed="4">4×</button>
+    <button data-speed="12">12×</button>
+    <button data-speed="60">60×</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Finances</h2>
+  <div class="row"><span>Compte</span><span id="money">5000 FC</span></div>
+</div>
+
+<div class="card">
+  <h2>Famille</h2>
+  <div id="family"></div>
+</div>
+
+<div class="card">
+  <h2>Employés</h2>
+  <div id="employees"></div>
+</div>
+
+<div class="card" id="expedition">
+  <h2>Expédition en cours</h2>
+  <div id="expeditionContent"></div>
+</div>
+
+<div class="card">
+  <h2>Journal du monde</h2>
+  <div id="events"></div>
+</div>
+
+<script>
+const T = {
+  MIN_PER_DAY: 1440, DAYS_PER_WEEK: 7, DAYS_PER_MONTH: 30,
+  DAYS_PER_YEAR: 360, MIN_PER_YEAR: 360 * 1440
+};
+const MONTHS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+const DAYS = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+
+class Game {
+  constructor() {
+    this.totalMinutes = 6 * 60;
+    this.speed = 1;
+    this.paused = false;
+    this.minPerSec = 1;
+    this.acc = 0;
+    this.last = performance.now();
+    this.money = 5000;
+    this.weather = { type: 'soleil', temp: 26, humidity: 0.75, floodRisk: 0.1 };
+    this.events = [];
+    this.expedition = null;
+    this.family = [
+      { name: 'Mwamba (vous)', birth: 20 * T.MIN_PER_YEAR },
+      { name: 'Nsimba', birth: 18 * T.MIN_PER_YEAR },
+      { name: 'Kelo', birth: 25 * T.MIN_PER_YEAR },
+    ];
+    this.employees = [
+      { name: 'Bakala', job: 'garde', salary: 150, active: true },
+      { name: 'Mbuyi', job: 'mineur', salary: 120, active: true },
+      { name: 'Lelo', job: 'commerçant', salary: 100, active: true },
+    ];
+    this._bind();
+    this._log('🌅 Nouvelle partie — An 1, Lundi 1er Janvier.');
+    requestAnimationFrame(this._loop.bind(this));
+  }
+
+  _loop(now) {
+    const dt = (now - this.last) / 1000;
+    this.last = now;
+    if (!this.paused) {
+      this.acc += dt * this.minPerSec * this.speed;
+      let safety = 0;
+      while (this.acc >= 1 && safety++ < 5000) { this.acc -= 1; this._tick(); }
+    }
+    this._render();
+    requestAnimationFrame(this._loop.bind(this));
+  }
+
+  _tick() {
+    this.totalMinutes += 1;
+    const d = this.decompose();
+    this.weather.floodRisk = Math.max(0, Math.min(1,
+      this.weather.floodRisk + (this.weather.type === 'orage' ? 0.002 : -0.0008)));
+    if (this.totalMinutes % 180 === 0) this._updateWeather(d);
+    if (d.hour === 0 && d.minute === 0) this._log(`📅 Nouveau jour — ${d.weekday} ${d.dayOfMonth} ${d.month}`);
+    if (Math.random() < 1/4000) this._randomEvent();
+    if (d.hour === 17 && d.minute === 1) {
+      const total = this.employees.filter(e => e.active).reduce((s,e) => s+e.salary, 0);
+      if (total > 0) { this.money -= total; this._log(`💰 Paie : -${total} FC`); }
+    }
+    if (this.expedition) {
+      const e = this.expedition;
+      e.elapsed += 1; e.water = Math.max(0, e.water - 1/60); e.battery = Math.max(0, e.battery - 0.2);
+      if (e.elapsed >= e.plannedMinutes) {
+        this._log(`⛏️ Retour de ${e.region} — expédition terminée.`);
+        this.expedition = null;
+      }
+    }
+  }
+
+  _updateWeather(d) {
+    const season = this._season(d.monthIndex);
+    const opts = season === 'pluies' ? ['pluie','orage','bruine','nuageux','soleil']
+               : season === 'seche' ? ['soleil','soleil','nuageux','brouillard']
+               : ['soleil','nuageux','bruine','pluie'];
+    const old = this.weather.type;
+    this.weather.type = opts[Math.floor(Math.random() * opts.length)];
+    this.weather.temp = 22 + Math.round(Math.random() * 8);
+    this.weather.humidity = 0.6 + Math.random() * 0.35;
+    if (old !== this.weather.type) {
+      const icons = { soleil:'☀️', nuageux:'☁️', bruine:'🌦️', pluie:'🌧️', orage:'⛈️', brouillard:'🌫️' };
+      this._log(`${icons[this.weather.type] || '🌤️'} Météo : ${this.weather.type}`);
+    }
+  }
+
+  _randomEvent() {
+    const r = Math.random();
+    const live = this.employees.filter(e => e.active);
+    if (r < 0.3 && live.length) {
+      const e = live[Math.floor(Math.random() * live.length)];
+      if (Math.random() < 0.3) {
+        e.active = false;
+        this._log(`❌ ${e.name} a démissionné.`);
+      } else {
+        this._log(`🤒 ${e.name} est malade aujourd'hui.`);
+      }
+    } else if (r < 0.5) {
+      this._log(`🌧️ La rivière est montée de 20 cm.`);
+    } else if (r < 0.7) {
+      const gain = 50 + Math.floor(Math.random() * 150);
+      this.money += gain;
+      this._log(`💵 Vente au marché : +${gain} FC`);
+    } else {
+      const f = this.family[Math.floor(Math.random() * this.family.length)];
+      this._log(`👨‍👩‍👧 ${f.name} vaque à ses occupations.`);
+    }
+  }
+
+  _season(m) {
+    if (m <= 1) return 'petite_seche';
+    if (m <= 4) return 'pluies';
+    if (m <= 8) return 'seche';
+    return 'pluies';
+  }
+
+  decompose() {
+    const tm = this.totalMinutes;
+    const totalDays = Math.floor(tm / T.MIN_PER_DAY);
+    const mod = tm % T.MIN_PER_DAY;
+    const hour = Math.floor(mod / 60), minute = mod % 60;
+    const year = Math.floor(totalDays / T.DAYS_PER_YEAR) + 1;
+    const dayOfYear = totalDays % T.DAYS_PER_YEAR;
+    const monthIndex = Math.floor(dayOfYear / T.DAYS_PER_MONTH);
+    const dayOfMonth = (dayOfYear % T.DAYS_PER_MONTH) + 1;
+    const weekday = DAYS[totalDays % T.DAYS_PER_WEEK];
+    let phase;
+    if (hour >= 5 && hour < 12) phase = 'matin';
+    else if (hour >= 12 && hour < 18) phase = 'après-midi';
+    else if (hour >= 18 && hour < 22) phase = 'soir';
+    else phase = 'nuit';
+    return { year, monthIndex, month: MONTHS[monthIndex], dayOfMonth, weekday, hour, minute, phase, season: this._season(monthIndex) };
+  }
+
+  _bind() {
+    document.getElementById('btnPause').onclick = () => {
+      this.paused = !this.paused;
+      this._log(this.paused ? '⏸️ Pause' : '▶️ Reprise');
+    };
+    document.getElementById('speedBtns').addEventListener('click', (ev) => {
+      const btn = ev.target.closest('[data-speed]'); if (!btn) return;
+      this.speed = parseInt(btn.dataset.speed);
+      document.querySelectorAll('#speedBtns button').forEach(b => b.classList.toggle('active', b === btn));
+    });
+    document.getElementById('btnSleep').onclick = () => {
+      const d = this.decompose(); const m = d.hour * 60 + d.minute;
+      let delta = 6 * 60 - m; if (delta <= 0) delta += 1440;
+      const prevSpeed = this.speed;
+      this.speed = 120;
+      this._log(`😴 Vous dormez ${Math.round(delta/60)}h...`);
+      const wakeAt = this.totalMinutes + delta;
+      const check = setInterval(() => {
+        if (this.totalMinutes >= wakeAt || this.paused) {
+          clearInterval(check);
+          if (!this.paused) {
+            this.speed = prevSpeed;
+            document.querySelectorAll('#speedBtns button').forEach(b => b.classList.toggle('active', parseInt(b.dataset.speed) === prevSpeed));
+            const nd = this.decompose();
+            this._log(`☀️ Réveil à ${String(nd.hour).padStart(2,'0')}h${String(nd.minute).padStart(2,'0')}`);
+          }
+        }
+      }, 150);
+    };
+    document.getElementById('btnExpedition').onclick = () => {
+      if (this.expedition) { this._log('⛏️ Déjà en expédition !'); return; }
+      const ans = prompt('Durée de l\'expédition en heures (1-72) ?', '6');
+      const h = parseInt(ans);
+      if (!h || h < 1 || h > 72) { this._log('❌ Durée invalide (1-72h).'); return; }
+      this.expedition = { region: 'Grotte de Mbanza', elapsed: 0, plannedMinutes: h * 60, water: 4, battery: 100 };
+      this._log(`⛏️ Vous entrez dans la grotte pour ${h}h. Prévoyez eau et batterie !`);
+    };
+  }
+
+  _log(msg) {
+    const d = this.decompose();
+    const stamp = `[${String(d.hour).padStart(2,'0')}:${String(d.minute).padStart(2,'0')}]`;
+    this.events.unshift(`${stamp} ${msg}`);
+    if (this.events.length > 50) this.events.length = 50;
+  }
+
+  _render() {
+    const d = this.decompose();
+    document.getElementById('clock').textContent = `${String(d.hour).padStart(2,'0')}h${String(d.minute).padStart(2,'0')}`;
+    document.getElementById('date').textContent = `${d.weekday} ${d.dayOfMonth} ${d.month}, An ${d.year}`;
+    document.getElementById('phase').textContent = `${d.phase} · ${d.season.replace('_',' ')}`;
+    document.getElementById('weather').textContent = `${this.weather.type} · ${this.weather.temp}°C · crue ${Math.round(this.weather.floodRisk*100)}%`;
+    document.getElementById('money').textContent = `${this.money} FC`;
+
+    document.getElementById('family').innerHTML = this.family.map(m => {
+      const age = Math.floor((this.totalMinutes - m.birth) / T.MIN_PER_YEAR);
+      const stage = age < 3 ? 'Bébé' : age < 13 ? 'Enfant' : age < 18 ? 'Adolescent' : age < 60 ? 'Adulte' : 'Aîné';
+      return `<div class="row"><span>${m.name}</span><span class="dim">${age} ans · ${stage}</span></div>`;
+    }).join('');
+
+    const m = d.hour * 60 + d.minute;
+    document.getElementById('employees').innerHTML = this.employees.map(e => {
+      let state = 'hors service';
+      if (!e.active) state = 'parti';
+      else if (m >= 22*60 || m < 6*60) state = 'dort';
+      else if (m >= 7*60 && m < 12*60) state = 'travaille';
+      else if (m >= 12*60 && m < 13*60) state = 'pause';
+      else if (m >= 13*60 && m < 17*60) state = 'travaille';
+      return `<div class="row"><span>${e.name} <span class="dim">(${e.job})</span></span><span class="dim">${state}</span></div>`;
+    }).join('');
+
+    const expEl = document.getElementById('expedition');
+    if (this.expedition) {
+      const e = this.expedition;
+      const pct = Math.round(100 * e.elapsed / e.plannedMinutes);
+      document.getElementById('expeditionContent').innerHTML =
+        `<div><strong>${e.region}</strong> — ${pct}%</div>
+         <div class="bar"><div style="width:${pct}%"></div></div>
+         <div class="dim">Eau : ${e.water.toFixed(1)}h · Batterie : ${e.battery.toFixed(0)}%</div>`;
+      expEl.style.display = 'block';
+    } else expEl.style.display = 'none';
+
+    document.getElementById('events').innerHTML = this.events.slice(0, 20).map(e => `<div class="event">${e}</div>`).join('');
+  }
+}
+
+window.addEventListener('DOMContentLoaded', () => { window.game = new Game(); });
+</script>
+</body>
+</html>
