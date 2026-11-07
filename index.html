@@ -3,276 +3,310 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>KONGO CAVE</title>
+<title>KONGO CAVE - 2D</title>
 <style>
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
   body {
     margin: 0; padding: 0; font-family: -apple-system, system-ui, sans-serif;
-    background: #0a0f14; color: #e6e0d4; height: 100vh; overflow: hidden;
+    background: #111; color: #fff; height: 100vh; overflow: hidden;
     display: flex; flex-direction: column;
   }
+
+  /* --- HUD (Barre du haut) --- */
+  .hud {
+    background: rgba(0,0,0,0.8); padding: 10px 15px; display: flex; justify-content: space-between;
+    border-bottom: 1px solid #333; padding-top: max(10px, env(safe-area-inset-top)); z-index: 10;
+  }
+  .hud-text { font-size: 14px; font-weight: bold; }
+  .hud-sub { font-size: 11px; color: #aaa; }
+
+  /* --- LE MONDE 2D (Grille) --- */
+  .world-container {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden; background: #2a3a20; /* Herbe sombre */
+  }
   
-  /* --- BARRE DU HAUT --- */
-  .top-bar {
-    background: #131a20; padding: 10px 15px; border-bottom: 1px solid #2a2015;
-    display: flex; justify-content: space-between; align-items: center;
-    padding-top: max(10px, env(safe-area-inset-top)); z-index: 10;
+  /* On utilise une grille CSS pour dessiner le monde */
+  .map-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(5, 1fr);
+    width: 100%; height: 100%;
+    gap: 1px; background: #1a2514;
   }
-  .top-info { display: flex; flex-direction: column; }
-  #clock { font-size: 18px; font-weight: bold; color: #d4a44a; }
-  #date { font-size: 11px; color: #9aacb8; }
-  .money { font-size: 14px; color: #6b8a5a; font-weight: bold; text-align: right; }
+  .tile {
+    background: #3a5a2a; /* Herbe */
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px; position: relative;
+  }
+  .tile.grass { background: #3a5a2a; }
+  .tile.path { background: #5a4a3a; } /* Chemin de terre */
+  .tile.house { background: #4a3520; border: 2px solid #7a5a30; font-size: 40px; }
+  .tile.cave { background: #1a1a1a; border: 2px solid #444; font-size: 40px; }
+  .tile.water { background: #2a4a6a; border: 1px solid #4a8aaa; }
 
-  /* --- CARTE DU MONDE --- */
-  .map-container {
-    flex: 1; position: relative; background: #0d141a;
-    background-image: radial-gradient(circle at center, #1a2a35 0%, #0a0f14 100%);
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  /* Le joueur */
+  .player {
+    position: absolute; font-size: 40px; transition: all 0.2s ease;
+    z-index: 5; filter: drop-shadow(0 5px 5px rgba(0,0,0,0.5));
   }
-  .zone {
-    width: 120px; height: 120px; border-radius: 50%; border: 2px solid #2f3f4f;
-    display: flex; align-items: center; justify-content: center; flex-direction: column;
-    background: rgba(0,0,0,0.5); cursor: pointer; transition: 0.2s;
-    margin: 15px;
-  }
-  .zone:active { transform: scale(0.95); }
-  .zone.village { border-color: #d4a44a; box-shadow: 0 0 20px rgba(212,164,74,0.2); }
-  .zone.cave { border-color: #4a6b8a; box-shadow: 0 0 20px rgba(74,107,138,0.2); }
-  .zone.market { border-color: #6b8a5a; box-shadow: 0 0 20px rgba(107,138,90,0.2); }
-  .zone span { font-size: 30px; margin-bottom: 5px; }
-  .zone label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
 
-  /* --- MESSAGE FLOTTANT --- */
-  #toast {
-    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-    background: #1f2a33; padding: 10px 20px; border-radius: 20px; font-size: 13px;
-    border: 1px solid #2f3f4f; opacity: 0; transition: 0.3s; pointer-events: none;
-    white-space: nowrap; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+  /* --- CONTRÔLES (D-Pad) --- */
+  .controls {
+    height: 180px; background: rgba(0,0,0,0.9); display: flex; justify-content: space-between;
+    padding: 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); z-index: 10;
   }
-  #toast.show { opacity: 1; bottom: 30px; }
-
-  /* --- MENU DU BAS --- */
-  .bottom-nav {
-    background: #131a20; display: flex; border-top: 1px solid #2a2015;
-    padding-bottom: max(10px, env(safe-area-inset-bottom)); z-index: 10;
+  .dpad { display: flex; flex-direction: column; align-items: center; width: 150px; }
+  .dpad-row { display: flex; }
+  .btn-dir {
+    width: 50px; height: 50px; background: #333; border: 1px solid #555; color: #fff;
+    font-size: 20px; display: flex; align-items: center; justify-content: center; border-radius: 8px; margin: 2px;
   }
-  .nav-btn {
-    flex: 1; background: none; border: none; color: #7a8a96; padding: 12px 0;
-    font-size: 22px; cursor: pointer; display: flex; flex-direction: column; align-items: center;
+  .btn-dir:active { background: #555; }
+  .action-panel { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-end; gap: 10px; }
+  .btn-action {
+    background: #d4a44a; color: #000; border: none; padding: 15px 20px; border-radius: 10px;
+    font-weight: bold; font-size: 14px; width: 100%; display: none;
   }
-  .nav-btn.active { color: #d4a44a; }
-  .nav-btn span { font-size: 10px; margin-top: 3px; text-transform: uppercase; }
-
-  /* --- ÉCRAN TÉLÉPHONE (OVERLAY) --- */
-  #phoneScreen {
+  .btn-action.show { display: block; }
+  
+  /* --- OVERLAY GROTTE --- */
+  .cave-view {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-    background: #0a0f14; z-index: 20; display: none; flex-direction: column;
-    padding: 15px; padding-top: max(15px, env(safe-area-inset-top));
+    background: #0a0a0a; display: none; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 20;
   }
-  .phone-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #2a2015; padding-bottom: 10px; }
-  .phone-header h2 { margin: 0; font-size: 18px; color: #d4a44a; }
-  .close-phone { background: none; border: none; color: #e6e0d4; font-size: 24px; cursor: pointer; }
-  .phone-content { flex: 1; overflow-y: auto; }
-  .card { background: #131a20; border: 1px solid #1f2a33; border-radius: 10px; padding: 15px; margin-bottom: 10px; }
-  .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1a2129; font-size: 14px; }
-  .row:last-child { border: none; }
-
-  /* --- CONTRÔLES DE VITESSE --- */
-  .time-controls { display: flex; gap: 5px; margin-top: 10px; }
-  .time-controls button { flex: 1; background: #1f2a33; color: #e6e0d4; border: 1px solid #2f3f4f; padding: 8px; border-radius: 5px; font-size: 12px; }
-  .time-controls button.active { background: #d4a44a; color: #0a0f14; font-weight: bold; }
+  .cave-view.active { display: flex; }
+  .cave-title { font-size: 24px; color: #8a9aaa; margin-bottom: 20px; }
 </style>
 </head>
 <body>
 
-<!-- BARRE SUPÉRIEURE -->
-<div class="top-bar">
-  <div class="top-info">
-    <span id="clock">06h00</span>
-    <span id="date">Lundi 1 Janvier</span>
+<!-- BARRE DU HAUT -->
+<div class="hud">
+  <div>
+    <div class="hud-text" id="clock">06h00</div>
+    <div class="hud-sub" id="date">Lundi 1 Janvier</div>
   </div>
-  <div class="money" id="money">5000 FC</div>
+  <div style="text-align:right;">
+    <div class="hud-text" style="color:#6b8a5a" id="money">5000 FC</div>
+    <div class="hud-sub" id="location">Extérieur</div>
+  </div>
 </div>
 
-<!-- CARTE DU MONDE -->
-<div class="map-container">
-  <div class="zone village" onclick="showToast('Vous êtes au village. Vous vous reposez.')">
-    <span>🏠</span><label>Village</label>
+<!-- LE MONDE 2D -->
+<div class="world-container" id="worldContainer">
+  <div class="map-grid" id="mapGrid">
+    <!-- La grille sera générée par Javascript -->
   </div>
-  <div style="display:flex; gap:20px;">
-    <div class="zone market" onclick="showToast('Marché : -100 FC. Nourriture achetée.')">
-      <span>🛒</span><label>Marché</label>
+  <div class="player" id="player">🧑🏾‍🦱</div>
+</div>
+
+<!-- VUE DE LA GROTTE -->
+<div class="cave-view" id="caveView">
+  <div class="cave-title">⛏️ Grotte Sombre</div>
+  <p style="color:#666; margin-bottom: 30px;">Il fait noir... Vos provisions baissent.</p>
+  <button onclick="exitCave()" style="padding:15px 30px; border-radius:10px; border:none; background:#444; color:#fff; font-size:16px;">Sortir de la grotte</button>
+</div>
+
+<!-- CONTRÔLES -->
+<div class="controls">
+  <div class="dpad">
+    <div class="dpad-row"><button class="btn-dir" onclick="move(0, -1)">▲</button></div>
+    <div class="dpad-row">
+      <button class="btn-dir" onclick="move(-1, 0)">◀</button>
+      <button class="btn-dir" onclick="action()">⏺</button>
+      <button class="btn-dir" onclick="move(1, 0)">▶</button>
     </div>
-    <div class="zone cave" onclick="startExpedition()">
-      <span>⛏️</span><label>Grotte</label>
-    </div>
+    <div class="dpad-row"><button class="btn-dir" onclick="move(0, 1)">▼</button></div>
   </div>
-  
-  <div id="toast">Message</div>
-</div>
-
-<!-- MENU INFÉRIEUR -->
-<div class="bottom-nav">
-  <button class="nav-btn active" onclick="togglePhone('none')"><span>🗺️</span>Carte</button>
-  <button class="nav-btn" onclick="togglePhone('phone')"><span>📱</span>Téléphone</button>
-  <button class="nav-btn" onclick="togglePhone('time')"><span>⏱️</span>Temps</button>
-</div>
-
-<!-- ÉCRAN TÉLÉPHONE VIRTUEL -->
-<div id="phoneScreen">
-  <div class="phone-header">
-    <h2 id="phoneTitle">Kongo Phone</h2>
-    <button class="close-phone" onclick="togglePhone('none')">✕</button>
+  <div class="action-panel">
+    <button class="btn-action" id="actionBtn" onclick="action()">Action</button>
   </div>
-  <div class="phone-content" id="phoneContent"></div>
 </div>
 
 <script>
-const T = { MIN_PER_DAY: 1440, DAYS_PER_WEEK: 7, DAYS_PER_MONTH: 30, DAYS_PER_YEAR: 360, MIN_PER_YEAR: 360 * 1440 };
-const MONTHS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
-const DAYS = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+// Configuration du jeu
+const GRID_SIZE = 5;
+let playerX = 2, playerY = 2; // Position de départ (centre)
+let currentLocation = 'exterior';
 
-class Game {
-  constructor() {
-    this.totalMinutes = 6 * 60;
-    this.speed = 1; this.paused = false; this.acc = 0; this.last = performance.now();
-    this.money = 5000;
-    this.family = [
-      { name: 'Mwamba (vous)', birth: 20 * T.MIN_PER_YEAR },
-      { name: 'Nsimba', birth: 18 * T.MIN_PER_YEAR }
-    ];
-    this.employees = [
-      { name: 'Bakala', job: 'Garde', salary: 150, active: true },
-      { name: 'Mbuyi', job: 'Mineur', salary: 120, active: true }
-    ];
-    requestAnimationFrame(this.loop.bind(this));
-  }
+// Carte du monde (0: herbe, 1: maison, 2: grotte, 3: eau, 4: chemin)
+const worldMap = [
+  [0, 0, 0, 0, 0],
+  [0, 3, 3, 1, 0],
+  [0, 3, 4, 4, 0],
+  [0, 0, 4, 2, 0],
+  [0, 0, 0, 0, 0]
+];
 
-  loop(now) {
-    const dt = (now - this.last) / 1000; this.last = now;
-    if (!this.paused) {
-      this.acc += dt * 1 * this.speed;
-      let safety = 0;
-      while (this.acc >= 1 && safety++ < 100) { this.acc -= 1; this.tick(); }
-    }
-    this.render();
-    requestAnimationFrame(this.loop.bind(this));
-  }
+// Initialisation de l'horloge
+let totalMinutes = 6 * 60; 
+let lastTime = performance.now();
 
-  tick() {
-    this.totalMinutes += 1;
-    const d = this.getDate();
-    if (d.hour === 17 && d.minute === 1) {
-      let total = this.employees.filter(e => e.active).reduce((s,e) => s+e.salary, 0);
-      if (total > 0) { this.money -= total; this.showToast(`💰 Paie : -${total} FC`); }
+// Création de la grille visuelle
+function initMap() {
+  const grid = document.getElementById('mapGrid');
+  grid.innerHTML = '';
+  for (let y = 0; y < GRID_SIZE; y++) {
+    for (let x = 0; x < GRID_SIZE; x++) {
+      const tile = document.createElement('div');
+      tile.className = 'tile';
+      const type = worldMap[y][x];
+      if (type === 0) tile.classList.add('grass');
+      if (type === 1) { tile.classList.add('house'); tile.textContent = '🏠'; }
+      if (type === 2) { tile.classList.add('cave'); tile.textContent = '🕳️'; }
+      if (type === 3) { tile.classList.add('water'); tile.textContent = '🌊'; }
+      if (type === 4) { tile.classList.add('path'); }
+      grid.appendChild(tile);
     }
   }
+  updatePlayerPosition();
+}
 
-  getDate() {
-    const tm = this.totalMinutes;
-    const days = Math.floor(tm / T.MIN_PER_DAY);
-    const mod = tm % T.MIN_PER_DAY;
-    return {
-      hour: Math.floor(mod / 60), minute: mod % 60,
-      day: (days % T.DAYS_PER_MONTH) + 1,
-      month: MONTHS[Math.floor((days % T.DAYS_PER_YEAR) / T.DAYS_PER_MONTH)],
-      weekday: DAYS[days % T.DAYS_PER_WEEK],
-      year: Math.floor(days / T.DAYS_PER_YEAR) + 1
-    };
-  }
-
-  render() {
-    const d = this.getDate();
-    document.getElementById('clock').textContent = `${String(d.hour).padStart(2,'0')}h${String(d.minute).padStart(2,'0')}`;
-    document.getElementById('date').textContent = `${d.weekday} ${d.day} ${d.month}, An ${d.year}`;
-    document.getElementById('money').textContent = `${this.money} FC`;
-    if (document.getElementById('phoneScreen').style.display === 'flex') this.renderPhoneContent();
-  }
-
-  renderPhoneContent() {
-    const mode = document.getElementById('phoneTitle').dataset.mode;
-    const content = document.getElementById('phoneContent');
-    
-    if (mode === 'phone') {
-      content.innerHTML = `
-        <div class="card"><h3>👨‍👩‍👧 Famille</h3>
-          ${this.family.map(m => {
-            const age = Math.floor((this.totalMinutes - m.birth) / T.MIN_PER_YEAR);
-            return `<div class="row"><span>${m.name}</span><span>${age} ans</span></div>`;
-          }).join('')}
-        </div>
-        <div class="card"><h3>👷 Employés</h3>
-          ${this.employees.map(e => `
-            <div class="row">
-              <span>${e.name} (${e.job})</span>
-              <span style="color:${e.active ? '#6b8a5a' : '#8a4a4a'}">${e.active ? 'Travaille' : 'Parti'}</span>
-            </div>
-          `).join('')}
-        </div>
-      `;
-    } else if (mode === 'time') {
-      content.innerHTML = `
-        <div class="card">
-          <h3>⏱️ Vitesse du temps</h3>
-          <p style="font-size:12px; color:#9aacb8;">Le temps s'écoule même quand vous êtes sur la carte.</p>
-          <div class="time-controls">
-            <button onclick="game.setSpeed(0)" class="${this.speed===0?'active':''}">Pause</button>
-            <button onclick="game.setSpeed(1)" class="${this.speed===1?'active':''}">1×</button>
-            <button onclick="game.setSpeed(4)" class="${this.speed===4?'active':''}">4×</button>
-            <button onclick="game.setSpeed(12)" class="${this.speed===12?'active':''}">12×</button>
-          </div>
-        </div>
-        <div class="card">
-          <h3>😴 Dormir</h3>
-          <p style="font-size:12px; color:#9aacb8; margin-bottom:10px;">Accélérer le temps jusqu'au matin (06h00).</p>
-          <button onclick="game.sleep()" style="width:100%; padding:10px; background:#2f3f4f; color:white; border:none; border-radius:5px;">Dormir jusqu'au matin</button>
-        </div>
-      `;
-    }
-  }
-
-  setSpeed(s) { this.speed = s; this.paused = (s === 0); this.renderPhoneContent(); }
+// Mettre à jour la position visuelle du joueur
+function updatePlayerPosition() {
+  const player = document.getElementById('player');
+  // Calcul de la position en pourcentage (pour s'adapter à l'écran)
+  const xPercent = (playerX / GRID_SIZE) * 100 + (100 / GRID_SIZE / 2);
+  const yPercent = (playerY / GRID_SIZE) * 100 + (100 / GRID_SIZE / 2);
   
-  sleep() {
-    const d = this.getDate();
+  player.style.left = `${xPercent}%`;
+  player.style.top = `${yPercent}%`;
+  player.style.transform = 'translate(-50%, -50%)';
+
+  checkTile();
+}
+
+// Vérifier sur quelle case on est
+function checkTile() {
+  const tileType = worldMap[playerY][playerX];
+  const actionBtn = document.getElementById('actionBtn');
+  
+  if (tileType === 1) { // Maison
+    actionBtn.textContent = '😴 Dormir / Se reposer';
+    actionBtn.classList.add('show');
+  } else if (tileType === 2) { // Grotte
+    actionBtn.textContent = '⛏️ Entrer dans la grotte';
+    actionBtn.classList.add('show');
+  } else if (tileType === 3) { // Eau
+    actionBtn.textContent = '💧 Boire de l\\'eau';
+    actionBtn.classList.add('show');
+  } else {
+    actionBtn.classList.remove('show');
+  }
+}
+
+// Déplacement
+function move(dx, dy) {
+  if (currentLocation === 'cave') return;
+  
+  const newX = playerX + dx;
+  const newY = playerY + dy;
+
+  // Vérifier les limites
+  if (newX >= 0 && newX < GRID_SIZE && newY >= 0 && newY < GRID_SIZE) {
+    // Vérifier si c'est de l'eau (infranchissable à pied)
+    if (worldMap[newY][newX] === 3) {
+      showToast("L'eau est profonde ici.");
+      return;
+    }
+    playerX = newX;
+    playerY = newY;
+    updatePlayerPosition();
+    
+    // Faire avancer le temps plus vite quand on marche
+    totalMinutes += 5;
+    updateTime();
+  }
+}
+
+// Action (bouton central ou bouton d'action)
+function action() {
+  const tileType = worldMap[playerY][playerX];
+  
+  if (tileType === 1) {
+    // Dormir
+    let d = getDate();
     let delta = 6 * 60 - (d.hour * 60 + d.minute);
     if (delta <= 0) delta += 1440;
-    this.totalMinutes += delta;
-    this.showToast(`☀️ Vous vous réveillez à 06h00.`);
-    togglePhone('none');
+    totalMinutes += delta;
+    updateTime();
+    showToast("☀️ Vous vous réveillez en pleine forme.");
+  } 
+  else if (tileType === 2) {
+    // Entrer dans la grotte
+    currentLocation = 'cave';
+    document.getElementById('caveView').classList.add('active');
+    document.getElementById('location').textContent = 'Dans la grotte';
+    document.getElementById('actionBtn').classList.remove('show');
+  }
+  else if (tileType === 3) {
+    showToast("💧 Vous buvez de l'eau fraîche.");
   }
 }
 
-function togglePhone(mode) {
-  const screen = document.getElementById('phoneScreen');
-  const title = document.getElementById('phoneTitle');
-  if (mode === 'none') {
-    screen.style.display = 'none';
-    document.querySelectorAll('.nav-btn').forEach((b, i) => b.classList.toggle('active', i===0));
-  } else {
-    screen.style.display = 'flex';
-    title.dataset.mode = mode;
-    title.textContent = mode === 'phone' ? '📱 Téléphone' : '⏱️ Horloge';
-    document.querySelectorAll('.nav-btn').forEach((b, i) => b.classList.toggle('active', (mode==='phone' && i===1) || (mode==='time' && i===2)));
-    game.renderPhoneContent();
-  }
+function exitCave() {
+  currentLocation = 'exterior';
+  document.getElementById('caveView').classList.remove('active');
+  document.getElementById('location').textContent = 'Extérieur';
+  checkTile();
+  totalMinutes += 60; // 1h passée dans la grotte
+  updateTime();
 }
 
-let toastTimeout;
+// Mise à jour de l'heure
+function updateTime() {
+  const d = getDate();
+  document.getElementById('clock').textContent = `${String(d.hour).padStart(2,'0')}h${String(d.minute).padStart(2,'0')}`;
+  document.getElementById('date').textContent = `${d.weekday} ${d.day} ${d.month}`;
+}
+
+function getDate() {
+  const days = Math.floor(totalMinutes / 1440);
+  const mod = totalMinutes % 1440;
+  return {
+    hour: Math.floor(mod / 60), minute: mod % 60,
+    day: (days % 30) + 1,
+    month: ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'][Math.floor((days % 360) / 30)],
+    weekday: ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'][days % 7]
+  };
+}
+
+// Boucle de temps (le temps s'écoule même sans bouger)
+function gameLoop(now) {
+  const dt = (now - lastTime) / 1000;
+  lastTime = now;
+  
+  if (currentLocation === 'exterior') {
+    totalMinutes += dt * 0.5; // 0.5 minute de jeu par seconde
+    updateTime();
+  }
+  requestAnimationFrame(gameLoop);
+}
+
+// Message volant
 function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastTimeout);
-  toastTimeout = setTimeout(() => t.classList.remove('show'), 3000);
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.8);padding:10px 20px;border-radius:20px;color:white;z-index:100;pointer-events:none;transition:opacity 0.5s;';
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 500); }, 2000);
 }
 
-function startExpedition() {
-  showToast('⛏️ En route vers la grotte...');
-  // Ici, on pourra plus tard lancer la mécanique d'expédition complète
-  setTimeout(() => showToast('Vous êtes dans la grotte. Il fait noir...'), 2000);
-}
+// Démarrer
+initMap();
+updateTime();
+requestAnimationFrame(gameLoop);
 
-window.onload = () => { window.game = new Game(); };
+// Permettre le déplacement au clavier (pour tester sur PC)
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowUp') move(0, -1);
+  if (e.key === 'ArrowDown') move(0, 1);
+  if (e.key === 'ArrowLeft') move(-1, 0);
+  if (e.key === 'ArrowRight') move(1, 0);
+  if (e.key === 'Enter') action();
+});
 </script>
 </body>
 </html>
